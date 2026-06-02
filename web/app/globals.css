@@ -9,18 +9,89 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-display);
+  --font-mono: var(--font-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* App (dashboard/auth) is a light theme — all surfaces are bg-white. We do NOT
+   flip to a dark foreground under OS dark mode (that made unstyled text render
+   near-white on white). */
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* ── Anu showcase (light) visual system ───────────────────────────────── */
+
+/* Fine cartographic survey grid (dark hairlines on paper). */
+.anu-grid {
+  background-image:
+    linear-gradient(to right, rgba(20, 33, 61, 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(20, 33, 61, 0.045) 1px, transparent 1px);
+  background-size: 56px 56px;
+}
+
+/* Faint topographic contour rings for depth. */
+.anu-contours {
+  background-image:
+    repeating-radial-gradient(circle at 86% -6%, rgba(176, 125, 40, 0.07) 0 1px, transparent 1px 52px),
+    repeating-radial-gradient(circle at 6% 108%, rgba(14, 122, 134, 0.06) 0 1px, transparent 1px 64px);
+}
+
+/* Subtle paper grain. */
+.anu-grain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.035;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Staggered load reveal. */
+@keyframes anu-rise {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: none; }
+}
+.anu-rise { opacity: 0; animation: anu-rise 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+/* Marching-ants data flow on diagram connectors. */
+@keyframes anu-flow { to { stroke-dashoffset: -24; } }
+.anu-flow { animation: anu-flow 0.9s linear infinite; }
+
+/* Scan sweep across the diagram. */
+@keyframes anu-sweep {
+  0%   { transform: translateX(-30%); opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { transform: translateX(130%); opacity: 0; }
+}
+.anu-sweep { animation: anu-sweep 5.5s ease-in-out infinite; }
+
+/* Moving sheen on premium buttons. */
+@keyframes anu-sheen { to { transform: translateX(220%); } }
+.anu-sheen::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  width: 40%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  transform: translateX(-120%);
+  animation: anu-sheen 3.4s ease-in-out infinite;
+}
+
+/* Soft pulse for the "live" dot. */
+@keyframes anu-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(47, 158, 110, 0.5); }
+  50%      { box-shadow: 0 0 0 6px rgba(47, 158, 110, 0); }
+}
+.anu-pulse { animation: anu-pulse 2.2s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .anu-rise, .anu-flow, .anu-sweep, .anu-pulse { animation: none; opacity: 1; }
+  .anu-sheen::before { animation: none; display: none; }
 }
