@@ -12,11 +12,11 @@ const STATS = [
 
 const CAPABILITIES = [
   { t: "Total roof area", d: "Square feet and roofing squares, from the precise building footprint." },
-  { t: "Per-facet pitch", d: "Rise/run and degrees for every roof plane, measured from LiDAR." },
+  { t: "Per-facet pitch", d: "Rise/run and degrees for every plane — measured from LiDAR, or estimated from geometry where it isn't." },
   { t: "Edge lengths", d: "Ridge, hip, valley, rake and eave totals — classified automatically." },
   { t: "Waste factor", d: "Material-loss estimate derived from roof complexity and pitch." },
-  { t: "Confidence score", d: "A transparent quality signal based on data coverage and source." },
-  { t: "PDF + overlay", d: "A shareable report and the measured roof drawn over the aerial image." },
+  { t: "Edit it on the map", d: "Trace, move or reshape the roof on the satellite view — area, squares and pitch update live." },
+  { t: "PDF + confidence", d: "A shareable report with a transparent confidence score based on data coverage." },
 ];
 
 const PIPELINE = [
@@ -38,7 +38,7 @@ const STACK = [
       ["@opennextjs/cloudflare", "Next.js → Worker adapter"],
       ["Next.js 16.2 · React 19", "App Router · server components"],
       ["NextAuth v5", "JWT sessions · credentials + OAuth"],
-      ["bcryptjs", "password hashing"],
+      ["Leaflet + Geoman", "interactive on-map roof editor"],
     ],
   },
   {
@@ -68,7 +68,7 @@ const STACK = [
       ["OpenStreetMap · Overpass", "building footprints"],
       ["NAIP · Planetary Computer", "aerial imagery (STAC COG)"],
       ["USGS 3DEP", "nationwide LiDAR"],
-      ["ReportLab", "PDF generation"],
+      ["Esri World Imagery", "satellite basemap for the editor"],
     ],
   },
 ];
@@ -207,8 +207,8 @@ export default function HomePage() {
               <Rise delay={240}>
                 <p className="mt-6 max-w-xl text-lg leading-relaxed text-slate-600">
                   Anu turns a property address into a complete roof-measurement report — area, per-facet
-                  pitch, edge lengths and waste factor — from free public aerial imagery and LiDAR.
-                  No site visit, no drone, no proprietary data.
+                  pitch, edge lengths and waste factor — from free public aerial imagery and LiDAR. Refine
+                  the outline and pitch right on the satellite map. No site visit, no drone, no proprietary data.
                 </p>
               </Rise>
               <Rise delay={360}>
@@ -289,8 +289,9 @@ export default function HomePage() {
             ))}
           </ol>
           <p className="mt-6 font-mono text-[11px] leading-relaxed tracking-wide text-slate-500">
-            Every property returns a complete report. Where LiDAR is unavailable, pitch is estimated from
-            footprint geometry and the confidence score reflects it — never a blank or partial result.
+            Every property returns a complete report — never a blank or partial result. Where LiDAR is
+            unavailable, pitch is estimated from footprint geometry. You can then fine-tune the outline and
+            pitch directly on the satellite map, and the report recomputes instantly.
           </p>
         </section>
 

@@ -5,7 +5,8 @@
 Anu is a **free** web platform for roofing contractors. A user enters a property
 address; Anu generates a measurement report — total roof area, per-facet area and
 pitch, edge lengths (ridge / hip / valley / rake / eave), a material waste factor, and
-a confidence score — rendered as an on-screen overlay and a downloadable PDF. It uses
+a confidence score — presented on an **interactive satellite map** (where the roof is
+highlighted and can be traced / reshaped by hand) plus a downloadable PDF. It uses
 free government data (USDA **NAIP** aerial imagery + USGS **3DEP LiDAR**) and
 **OpenStreetMap** building footprints, positioning it as a low-cost alternative to
 commercial aerial-measurement tools. **Free for everyone, unlimited reports.**
@@ -46,9 +47,19 @@ A roof report is produced from three free public data sources, combined for accu
    **RANSAC plane-fitting** segments the point cloud into facets; plane normals give pitch
    and orientation; plane intersections are classified into edge types.
 
-When LiDAR is available the report is **full** (per-facet pitch, edges, waste factor);
-where it isn't (~1% of the US), it degrades to a **basic** footprint-area report and the
-user can input pitch manually.
+**Every report is a complete ("full") report — never blank or partial.** Real data is
+used wherever it's available; gaps are filled with principled estimates, and the
+confidence score reflects how much was estimated:
+
+- **Footprint** — OSM (with retries across Overpass mirrors); if OSM has no building for
+  the address, a representative footprint is synthesized at the geocoded point.
+- **Pitch & facets** — real LiDAR plane-fit where 3DEP covers the site; otherwise a
+  hip-roof is estimated from the footprint geometry (industry-standard when no LiDAR).
+
+Because some addresses geocode imprecisely (or aren't in OSM at all), the report viewer
+includes an **on-map roof editor**: the user can drag the highlighted roof onto the
+correct house, reshape it to match the real outline, and set the pitch — area, squares
+and waste recompute live, and saving rewrites the report from the traced outline.
 
 ---
 
@@ -121,12 +132,19 @@ Browser ──https──▶  ┌───────────────�
    rows, and edge rows to **D1** (mapping each edge's facet *indices* to the created facet
    row IDs), then marks the report `completed`. On any error it marks it `failed` and lets
    the Queue retry (with backoff; exhausted messages go to the dead-letter queue).
-6. **View.** The report viewer (a server component) shows the overlay (streamed from R2
-   through an authenticated route), the measurement summary, the facet table, and the edge
-   summary, with a **PDF download**. While processing, a small client `StatusPoller`
-   polls `GET /api/reports/[id]/status` and refreshes on completion. Users can override a
-   facet's pitch (`PATCH …/facets/[facetId]/pitch`), which recomputes surface area from the
-   immutable footprint and updates report totals.
+6. **View & refine.** The report viewer (a server component) shows an **interactive
+   satellite map** (Esri World Imagery, client-side Leaflet) with the roof facets
+   highlighted from their stored GeoJSON, plus the measurement summary, facet table, edge
+   summary, and **PDF download**. While processing, a client `StatusPoller` polls
+   `GET /api/reports/[id]/status` and refreshes on completion.
+   - **Edit roof** opens the on-map editor (Leaflet + Geoman): drag the whole shape onto
+     the correct house, drag/add/remove corners to fit the outline, set pitch. Footprint /
+     roof area / squares update live. **`POST …/geometry`** recomputes the full
+     facet/edge/measurement set from the traced outline (shared `web/lib/roof-geometry.ts`,
+     identical math to the live preview), replaces the facets/edges, re-centers the
+     property, and marks the report `full` (model `v1.0-edited`, `manual` pitch).
+   - **Re-run** (**`POST …/rerun`**, optional `{ lat, lon }` to relocate) reprocesses the
+     report through the pipeline; **Delete** (**`DELETE …/[id]`**) removes it and its rows.
 
 ---
 
@@ -140,12 +158,14 @@ Browser ──https──▶  ┌───────────────�
 │   │   ├── (auth)/              # login / register
 │   │   ├── dashboard/           # reports, new report, settings
 │   │   └── api/                 # reports, properties/geocode, health
-│   ├── components/              # report-viewer (overlay, facet table, summary), UI
+│   ├── components/              # report-viewer (RoofEditor map, facet table, summary,
+│   │                            #   confidence badge, status poller, actions), UI
 │   ├── db/                      # schema.ts (Drizzle ORM table definitions)
 │   ├── lib/                     # db.ts (getDb() → Drizzle D1 client), s3 (R2),
 │   │                            #   rate-limit, enums, json-columns, auth,
 │   │                            #   container-contract, container-client,
-│   │                            #   queue-consumer, report-writer
+│   │                            #   queue-consumer, report-writer, roof-geometry
+│   │                            #   (shared hip-roof estimator used by the editor)
 │   ├── durable-objects/         # rate-limiter.ts (RateLimiterDO), quota.ts (QuotaDO)
 │   ├── containers/              # anu-ml.ts (AnuMLContainer — the ML container binding)
 │   ├── custom-worker.ts         # Worker entry: re-exports OpenNext fetch + queue() + DOs + Container
@@ -158,7 +178,8 @@ Browser ──https──▶  ┌───────────────�
 │   ├── app/
 │   │   ├── main.py              # FastAPI: GET /health, POST /process
 │   │   ├── pipeline/            # orchestrator, fetcher, building_footprints, stitcher,
-│   │   │                        #   plane_fitter, edge_extractor, measurer, reporter, result
+│   │   │                        #   plane_fitter, edge_extractor, measurer, reporter, result,
+│   │   │                        #   roof_estimator (hip-roof estimate when no LiDAR)
 │   │   ├── imagery/             # naip.py (STAC COG), mapbox.py, elevation.py (3DEP)
 │   │   └── utils/               # geo.py (coords/GSD), storage.py (R2 via boto3)
 │   ├── tests/                   # pytest (geo, plane_fitter, measurer, result contract)
@@ -180,6 +201,10 @@ Browser ──https──▶  ┌───────────────�
   in `web/lib/db.ts`. Drizzle is wasm-free and runs natively on Cloudflare Workers
   (Prisma's WASM engine does not bundle through OpenNext).
 - **NextAuth v5** (JWT sessions; credentials + optional Google OAuth; bcrypt)
+- **Leaflet + `@geoman-io/leaflet-geoman-free`** — the client-side satellite map and
+  interactive roof editor (Esri World Imagery basemap, no API key). Roof geometry math is
+  a pure-TS module (`web/lib/roof-geometry.ts`) shared by the live preview and the
+  authoritative server save, so both produce identical numbers.
 - **`@cloudflare/containers`** (Container binding) · **Vitest** (unit tests)
 
 **ML service (`ml-service/`)** — Python 3.12, FastAPI + Uvicorn
@@ -205,11 +230,13 @@ via `wrangler d1 migrations apply`.
 - **properties** — owner, raw + normalized address, lat/lon, optional parcel boundary,
   cached imagery source/date/path, `lidarAvailable`. Indexed by `userId` and `(lat, lon)`.
 - **reports** — `status` (`queued` | `processing` | `completed` | `failed`), `tier`
-  (`full` | `basic`), model version, roof area (sqft + squares), facet/structure counts,
+  (always `full`; `basic` retained only for legacy rows), model version (`v1.0`, or
+  `v1.0-edited` after an on-map edit), roof area (sqft + squares), facet/structure counts,
   waste factor, confidence, R2 keys for pdf/overlay, retry/error fields, timestamps.
 - **report_facets** — per facet: `structureIndex`, `facetIndex`, immutable
   `footprintAreaSqft`, derived `areaSqft`, `pitch` (e.g. `6/12`), `pitchDegrees`,
-  `pitchConfidence` (`measured` | `user_provided`), `orientation`, `polygon` (GeoJSON).
+  `pitchConfidence` (`measured` from LiDAR · `estimated` from geometry · `manual` from the
+  on-map editor), `orientation`, `polygon` (GeoJSON).
 - **report_edges** — `edgeType` (`ridge` | `hip` | `valley` | `rake` | `eave` |
   `flashing`), `lengthFt`, `geometry` (GeoJSON), and nullable `leftFacetId`/`rightFacetId`
   FKs (cascade on report delete; set-null on facet delete).

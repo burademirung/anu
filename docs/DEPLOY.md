@@ -80,9 +80,16 @@ wrapper delegates to `wrangler` — the `containers` binding causes a crash. Ins
 and push the image explicitly, then reference it as a registry image in `wrangler.jsonc`.
 
 ```bash
-# Build and push the container image (requires Docker / colima running)
-wrangler containers build ../ml-service -t anu-ml:v1 -p
+# Build and push the container image (requires Docker / colima running).
+# Bump the tag whenever ml-service changes and match it in wrangler.jsonc.
+wrangler containers build ../ml-service -t anu-ml:v2 -p
 ```
+
+> **Container image rollout gotcha.** Bumping the image + `wrangler deploy` only changes
+> the container *application* config; warm instances (`sleepAfter = "10m"`, keyed per
+> report id) keep the old image until they recycle. After deploy, watch
+> `wrangler containers list` until `STATE` returns to `active` (it shows `provisioning`
+> during rollout) before testing, or you'll hit the previous image.
 
 ## Step 7 — Build and deploy the Worker
 `OPEN_NEXT_DEPLOY=1` bypasses OpenNext's deploy wrapper (which crashes on the `containers`
@@ -101,10 +108,16 @@ The live URL is `https://anu-web.burademirung.workers.dev`.
 curl -s https://anu-web.burademirung.workers.dev/api/health      # {"status":"ok","service":"anu-web"}
 ```
 Then in a browser: register → log in → create a report for a US address. Watch it move
-`queued → processing → completed` (the StatusPoller refreshes the page). Confirm the overlay
-image renders and the PDF downloads. This exercises the full path: Worker → Queue →
+`queued → processing → completed` (the StatusPoller refreshes the page). Every report is a
+**full** report (real OSM footprint + LiDAR pitch where available, otherwise an estimated
+hip-roof — never blank/`basic`). Confirm the **satellite map** renders with the roof
+highlighted and the PDF downloads. This exercises the full path: Worker → Queue →
 consumer → **Container `/process`** → R2 + D1 → report viewer. (First container call has a
 cold-start; subsequent calls reuse the warm instance until `sleepAfter`.)
+
+Also verify the **on-map editor**: click **Edit roof**, drag/reshape the outline, change
+pitch, and **Save** — the report's facets/measurements update from the traced outline
+(`POST /api/reports/[id]/geometry`, no container needed). And **Re-run** / **Delete**.
 
 You can also use the seeded demo accounts (`demo@anu.dev` / `solo@anu.dev`, password
 `AnuDemo2026!`) to verify the report viewer with pre-existing data.
