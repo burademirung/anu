@@ -31,7 +31,7 @@ export default function RegisterPage() {
       const data = await res.json();
       setError(data.error || "Registration failed");
     } else {
-      router.push("/login");
+      router.push("/");
     }
   }
 
@@ -70,7 +70,7 @@ export default function RegisterPage() {
       </form>
       <p className="mt-4 text-sm text-center">
         Already have an account?{" "}
-        <a href="/login" className="text-blue-600 hover:underline">
+        <a href="/" className="text-blue-600 hover:underline">
           Sign in
         </a>
       </p>

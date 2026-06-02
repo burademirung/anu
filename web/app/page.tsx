@@ -183,7 +183,6 @@ export default function HomePage() {
             <a href="#how" className="hidden text-slate-500 transition hover:text-[#15233b] md:inline">How</a>
             <a href="#architecture" className="hidden text-slate-500 transition hover:text-[#15233b] md:inline">Architecture</a>
             <a href="#stack" className="hidden text-slate-500 transition hover:text-[#15233b] md:inline">Stack</a>
-            <Link href="/login" className="text-slate-600 transition hover:text-[#15233b]">Sign in</Link>
             <Link href="/register" className="rounded-full bg-[#15233b] px-4 py-2 text-white transition hover:bg-[#22324f]">Get started</Link>
           </nav>
         </header>

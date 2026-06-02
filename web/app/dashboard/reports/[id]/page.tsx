@@ -14,7 +14,7 @@ export default async function ReportViewerPage({
   params: Promise<{ id: string }>;
 }) {
   const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  if (!session?.user?.id) redirect("/");
 
   const { id } = await params;
 

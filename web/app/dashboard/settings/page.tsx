@@ -7,11 +7,11 @@ import PlanBadge from "@/components/PlanBadge";
 
 export default async function SettingsPage() {
   const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  if (!session?.user?.id) redirect("/");
 
   const db = getDb();
   const user = await db.query.users.findFirst({ where: eq(users.id, session.user.id) });
-  if (!user) redirect("/login");
+  if (!user) redirect("/");
 
   return (
     <div className="max-w-2xl">

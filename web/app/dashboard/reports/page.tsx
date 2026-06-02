@@ -7,7 +7,7 @@ import ReportCard from "@/components/ReportCard";
 
 export default async function ReportsPage() {
   const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  if (!session?.user?.id) redirect("/");
 
   const db = getDb();
   const reportList = await db.query.reports.findMany({
