@@ -12,32 +12,34 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Address is required" }, { status: 400 });
   }
 
-  const token = process.env.MAPBOX_ACCESS_TOKEN;
-  if (!token) {
-    return NextResponse.json({ error: "Geocoding service not configured" }, { status: 500 });
-  }
+  // US Census Bureau Geocoder — free, no API key, US addresses only.
+  // Fits the product (NAIP + 3DEP are US-only datasets).
+  const url =
+    "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress" +
+    `?address=${encodeURIComponent(address)}` +
+    "&benchmark=Public_AR_Current&format=json";
 
-  const encoded = encodeURIComponent(address);
-  const url = `https://api.mapbox.com/search/geocode/v6/forward?q=${encoded}&country=us&types=address&limit=1&access_token=${token}`;
-
-  const res = await fetch(url);
-  if (!res.ok) {
+  let data: { result?: { addressMatches?: Array<{ matchedAddress?: string; coordinates?: { x: number; y: number } }> } };
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) {
+      return NextResponse.json({ error: "Geocoding failed" }, { status: 502 });
+    }
+    data = await res.json();
+  } catch {
     return NextResponse.json({ error: "Geocoding failed" }, { status: 502 });
   }
 
-  const data = await res.json();
-  const features = data.features || [];
-
-  if (features.length === 0) {
+  const match = data.result?.addressMatches?.[0];
+  const lat = match?.coordinates?.y;
+  const lon = match?.coordinates?.x;
+  if (typeof lat !== "number" || typeof lon !== "number") {
     return NextResponse.json({ error: "Address not found" }, { status: 404 });
   }
-
-  const feature = features[0];
-  const [lon, lat] = feature.geometry.coordinates;
 
   return NextResponse.json({
     lat,
     lon,
-    addressNormalized: feature.properties?.full_address || address,
+    addressNormalized: match?.matchedAddress || address,
   });
 }

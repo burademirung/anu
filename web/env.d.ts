@@ -51,6 +51,17 @@ declare global {
     NEXTAUTH_SECRET?: string;
     GOOGLE_CLIENT_ID?: string;
     GOOGLE_CLIENT_SECRET?: string;
+    // R2 S3 credentials forwarded to the ML container (see containers/anu-ml.ts):
+    R2_ENDPOINT?: string;
+    R2_ACCESS_KEY_ID?: string;
+    R2_SECRET_ACCESS_KEY?: string;
+    R2_BUCKET?: string;
+    MAPBOX_ACCESS_TOKEN?: string;
+    // Stripe (billing):
+    STRIPE_SECRET_KEY?: string;
+    STRIPE_WEBHOOK_SECRET?: string;
+    STRIPE_PRICE_MONTHLY?: string;
+    STRIPE_PRICE_YEARLY?: string;
   }
 }
 
