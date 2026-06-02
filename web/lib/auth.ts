@@ -8,6 +8,9 @@ import { eq } from "drizzle-orm";
 import { rateLimit } from "@/lib/rate-limit";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  // Required on non-Vercel hosts (Cloudflare Workers / *.workers.dev): Auth.js
+  // refuses requests otherwise with "UntrustedHost".
+  trustHost: true,
   session: { strategy: "jwt" },
   pages: {
     signIn: "/login",
