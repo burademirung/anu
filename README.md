@@ -305,7 +305,7 @@ the S3 API (Workers bindings don't extend into containers), so it needs an R2 AP
 
 Deploys to a `*.workers.dev` subdomain (a custom domain is a later step). The full,
 copy-pasteable operator runbook is in
-[`docs/superpowers/plans/2026-06-01-cloudflare-05-deploy.md`](docs/superpowers/plans/2026-06-01-cloudflare-05-deploy.md).
+[`docs/DEPLOY.md`](docs/DEPLOY.md).
 In short:
 
 ```bash

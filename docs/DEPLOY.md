@@ -1,8 +1,8 @@
-# Cloudflare Migration — Plan 5 of 5: Provision & Deploy (Operator Runbook)
+# Anu — Deployment (Cloudflare)
 
-> **This plan is executed by YOU (the operator), not the agent.** Every step needs an
-> authenticated Cloudflare account and a Docker daemon — credentials the agent doesn't have.
-> Run these from `web/` unless noted. Anu is deployed to a `*.workers.dev` subdomain.
+> Operator runbook. Every step needs an authenticated Cloudflare account (Workers Paid
+> plan) and a Docker daemon (to build the ML container image). Run these from `web/`
+> unless noted. Anu deploys to a `*.workers.dev` subdomain.
 
 **Goal:** Provision the Cloudflare resources, set secrets, build+push the ML container, deploy the Worker, and verify a real report end-to-end.
 
