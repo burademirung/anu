@@ -1,0 +1,131 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// NOTE: SQLite/Prisma has no native enums. These were enums in Postgres and are
+// now validated in application code (see web/lib/enums.ts). Allowed values:
+//   plan:            free | premium
+//   status:          queued | processing | completed | failed
+//   tier:            full | basic
+//   imagerySource:   naip | mapbox
+//   pitchConfidence: measured | user_provided
+//   edgeType:        ridge | hip | valley | rake | eave | flashing
+
+model User {
+  id                    String     @id @default(uuid())
+  email                 String     @unique
+  name                  String
+  companyName           String?    @map("company_name")
+  passwordHash          String?    @map("password_hash")
+  plan                  String     @default("free")
+  stripeCustomerId      String?    @map("stripe_customer_id")
+  stripeSubscriptionId  String?    @map("stripe_subscription_id")
+  monthlyReportLimit    Int?       @default(5) @map("monthly_report_limit")
+  createdAt             DateTime   @default(now()) @map("created_at")
+  updatedAt             DateTime   @updatedAt @map("updated_at")
+
+  properties Property[]
+  reports    Report[]
+
+  @@map("users")
+}
+
+model Property {
+  id                  String    @id @default(uuid())
+  userId              String    @map("user_id")
+  addressRaw          String    @map("address_raw")
+  addressNormalized   String    @map("address_normalized")
+  lat                 Float
+  lon                 Float
+  parcelBoundary      String?   @map("parcel_boundary")
+  imagerySource       String?   @map("imagery_source")
+  imageryCaptureDate  DateTime? @map("imagery_capture_date")
+  imageryPath         String?   @map("imagery_path")
+  lidarAvailable      Boolean?  @map("lidar_available")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  user    User     @relation(fields: [userId], references: [id])
+  reports Report[]
+
+  @@index([userId])
+  @@index([lat, lon])
+  @@map("properties")
+}
+
+model Report {
+  id                    String    @id @default(uuid())
+  propertyId            String    @map("property_id")
+  userId                String    @map("user_id")
+  status                String    @default("queued")
+  tier                  String?
+  modelVersion          String?   @map("model_version")
+  roofAreaSqft          Float?    @map("roof_area_sqft")
+  roofAreaSquares       Float?    @map("roof_area_squares")
+  numFacets             Int?      @map("num_facets")
+  numStructures         Int?      @map("num_structures")
+  wasteFactor           Float?    @map("waste_factor")
+  confidenceScore       Float?    @map("confidence_score")
+  pdfUrl                String?   @map("pdf_url")
+  overlayUrl            String?   @map("overlay_url")
+  retryCount            Int       @default(0) @map("retry_count")
+  errorMessage          String?   @map("error_message")
+  processingStartedAt   DateTime? @map("processing_started_at")
+  processingCompletedAt DateTime? @map("processing_completed_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  property Property      @relation(fields: [propertyId], references: [id])
+  user     User          @relation(fields: [userId], references: [id])
+  facets   ReportFacet[]
+  edges    ReportEdge[]
+
+  @@index([userId, createdAt])
+  @@index([status])
+  @@index([userId, status])
+  @@map("reports")
+}
+
+model ReportFacet {
+  id                String    @id @default(uuid())
+  reportId          String    @map("report_id")
+  structureIndex    Int       @map("structure_index")
+  facetIndex        Int       @map("facet_index")
+  footprintAreaSqft Float     @map("footprint_area_sqft")
+  areaSqft          Float     @map("area_sqft")
+  pitch             String?
+  pitchDegrees      Float?    @map("pitch_degrees")
+  pitchConfidence   String?   @map("pitch_confidence")
+  orientation       String?
+  polygon           String
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  report     Report       @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  leftEdges  ReportEdge[] @relation("LeftFacet")
+  rightEdges ReportEdge[] @relation("RightFacet")
+
+  @@index([reportId])
+  @@map("report_facets")
+}
+
+model ReportEdge {
+  id           String  @id @default(uuid())
+  reportId     String  @map("report_id")
+  edgeType     String  @map("edge_type")
+  lengthFt     Float   @map("length_ft")
+  geometry     String
+  leftFacetId  String? @map("left_facet_id")
+  rightFacetId String? @map("right_facet_id")
+
+  report     Report       @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  leftFacet  ReportFacet? @relation("LeftFacet", fields: [leftFacetId], references: [id], onDelete: SetNull)
+  rightFacet ReportFacet? @relation("RightFacet", fields: [rightFacetId], references: [id], onDelete: SetNull)
+
+  @@index([reportId])
+  @@map("report_edges")
+}

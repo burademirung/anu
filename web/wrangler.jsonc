@@ -1,0 +1,44 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "anu-web",
+  "main": "custom-worker.ts",
+  "compatibility_date": "2026-05-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "anu",
+      "database_id": "local-placeholder-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    { "binding": "BUCKET", "bucket_name": "anu" }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "RATE_LIMITER", "class_name": "RateLimiterDO" },
+      { "name": "QUOTA", "class_name": "QuotaDO" },
+      { "name": "CONTAINER", "class_name": "AnuMLContainer" }
+    ]
+  },
+  "containers": [
+    {
+      "class_name": "AnuMLContainer",
+      // Build context: the ml-service Dockerfile sits one level up from web/.
+      "image": "../ml-service/Dockerfile",
+      "instance_type": "standard",
+      "max_instances": 5
+    }
+  ],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["RateLimiterDO"] },
+    { "tag": "v2", "new_sqlite_classes": ["QuotaDO"] },
+    { "tag": "v3", "new_sqlite_classes": ["AnuMLContainer"] }
+  ],
+  "queues": {
+    "producers": [{ "binding": "QUEUE", "queue": "anu-reports" }],
+    "consumers": [{ "queue": "anu-reports", "max_retries": 3, "dead_letter_queue": "anu-reports-dlq" }]
+  }
+}

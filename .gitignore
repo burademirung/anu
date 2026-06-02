@@ -1,0 +1,25 @@
+.DS_Store
+
+# Environment
+.env
+.env.local
+.env.production
+
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+
+# Build
+.next/
+out/
+
+# Data
+*.pt
+*.pth
+training/data/
+
+# IDE
+.idea/
+.vscode/

@@ -1,0 +1,107 @@
+services:
+  caddy:
+    image: caddy:2-alpine
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [web]
+    restart: unless-stopped
+
+  web:
+    build: ./web
+    expose: ["3000"]
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  ml-service:
+    build: ./ml-service
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    expose: ["8000"]
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  ml-worker:
+    build: ./ml-service
+    command: celery -A app.tasks worker --concurrency=1 -Q high,default --loglevel=info
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 6G
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: anu
+      POSTGRES_USER: anu
+      POSTGRES_PASSWORD: anu_dev
+    ports: ["5432:5432"]
+    volumes: ["pg-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U anu"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    volumes: ["redis-data:/data"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      retries: 3
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports: ["9000:9000", "9001:9001"]
+    volumes: ["minio-data:/data"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 30s
+      retries: 3
+
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    volumes: ["kuma-data:/app/data"]
+    expose: ["3001"]
+    restart: unless-stopped
+
+volumes:
+  caddy-data:
+  caddy-config:
+  pg-data:
+  redis-data:
+  minio-data:
+  kuma-data:
