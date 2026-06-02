@@ -27,11 +27,11 @@
     {
       "class_name": "AnuMLContainer",
       // Pre-built image pushed to the Cloudflare registry (built via
-      // `wrangler containers build ../ml-service -t anu-ml:v2 -p`). Using a
+      // `wrangler containers build ../ml-service -t anu-ml:v3 -p`). Using a
       // pre-built reference (not the Dockerfile) lets `wrangler deploy` run
       // without a local Docker build and avoids the OpenNext getPlatformProxy
       // build-ID assertion. Rebuild + bump the tag when ml-service changes.
-      "image": "registry.cloudflare.com/ced304dad442b3fa3120adaa0ce899a8/anu-ml:v2",
+      "image": "registry.cloudflare.com/ced304dad442b3fa3120adaa0ce899a8/anu-ml:v3",
       "instance_type": "standard-1",
       "max_instances": 5
     }

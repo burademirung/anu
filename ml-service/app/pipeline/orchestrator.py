@@ -86,41 +86,60 @@ def run_pipeline(report_id: str, property_id: str, lat: float, lon: float) -> di
         edges: list = []
 
         # Step 3: Real LiDAR pitch where available, else estimate the roof.
-        # A synthesized footprint has no real building to measure, so we skip
-        # LiDAR entirely and estimate.
-        lidar_points = None if synthesized else lidar.fetch(bbox)
-        pitch_source = "measured" if lidar_points is not None else "estimated"
+        # EVERY failure mode degrades to the geometric estimate so we always
+        # return a complete report — a stage error must never 500 the report.
+        def _estimate_structure(idx: int, b: dict) -> None:
+            bf, be = roof_estimator.estimate(
+                b["polygon"], b["footprint_area_sqft"], lat,
+                structure_index=idx, facet_start_index=len(facets),
+            )
+            facets.extend(bf)
+            edges.extend(be)
 
+        lidar_points = None
+        if not synthesized:
+            try:
+                lidar_points = lidar.fetch(bbox)
+            except Exception as e:
+                logger.warning("LiDAR fetch failed: %s — estimating pitch", e)
+                lidar_points = None
+
+        fell_back = False
         if lidar_points is not None:
             for i, building in enumerate(all_buildings):
-                polygon = building["polygon"]
-                clipped = lidar.clip_to_polygon(lidar_points, polygon)
-                clipped = lidar.remove_ground_points(clipped)
-
-                if len(clipped) >= config.MIN_LIDAR_POINTS:
-                    planes = plane_fitter.fit(clipped)
-                    poly_facets = plane_fitter.planes_to_facets(planes, polygon)
-                    for f in poly_facets:
-                        f["structure_index"] = i
-                        f["facet_index"] = len(facets) + f.get("facet_index", 0)
-                    facets.extend(poly_facets)
-                    edges.extend(edge_extractor.extract(planes, poly_facets))
-                else:
-                    # LiDAR too sparse for this structure — estimate it.
-                    bf, be = roof_estimator.estimate(
-                        polygon, building["footprint_area_sqft"], lat,
-                        structure_index=i, facet_start_index=len(facets),
+                try:
+                    polygon = building["polygon"]
+                    clipped = lidar.remove_ground_points(
+                        lidar.clip_to_polygon(lidar_points, polygon)
                     )
-                    facets.extend(bf)
-                    edges.extend(be)
+                    poly_facets = []
+                    if len(clipped) >= config.MIN_LIDAR_POINTS:
+                        planes = plane_fitter.fit(clipped)
+                        poly_facets = plane_fitter.planes_to_facets(planes, polygon)
+                        for f in poly_facets:
+                            f["structure_index"] = i
+                            f["facet_index"] = len(facets) + f.get("facet_index", 0)
+                    if poly_facets:
+                        facets.extend(poly_facets)
+                        edges.extend(edge_extractor.extract(planes, poly_facets))
+                    else:
+                        fell_back = True
+                        _estimate_structure(i, building)
+                except Exception as e:
+                    logger.warning("LiDAR processing failed for structure %d: %s — estimating", i, e)
+                    fell_back = True
+                    _estimate_structure(i, building)
         else:
             for i, building in enumerate(all_buildings):
-                bf, be = roof_estimator.estimate(
-                    building["polygon"], building["footprint_area_sqft"], lat,
-                    structure_index=i, facet_start_index=len(facets),
-                )
-                facets.extend(bf)
-                edges.extend(be)
+                _estimate_structure(i, building)
+
+        # Last-resort guard: never return a report with no facets.
+        if not facets:
+            logger.warning("No facets produced — estimating from footprint(s)")
+            for i, building in enumerate(all_buildings):
+                _estimate_structure(i, building)
+
+        pitch_source = "measured" if (lidar_points is not None and not fell_back) else "estimated"
 
         tier = "full"
         measurements = measurer.calculate_full(roof_polygons, facets, edges, effective_gsd)
@@ -145,27 +164,29 @@ def run_pipeline(report_id: str, property_id: str, lat: float, lon: float) -> di
             pitch_source,
         )
 
-        # Step 5: Generate report artifacts and upload to R2
-        report_data = reporter.assemble(
-            measurements, roof_polygons, facets, edges, tier, img_metadata
-        )
-
-        imagery_key = None
-        if image is not None and image.any():
-            img_buf = io.BytesIO()
-            Image.fromarray(image.astype(np.uint8)).save(img_buf, format="PNG")
-            img_buf.seek(0)
-            imagery_key = storage.upload_imagery(
-                f"imagery/{geo.location_hash(lat, lon)}.png", img_buf.getvalue()
+        # Step 5: Generate report artifacts and upload to R2. Best-effort — the
+        # viewer renders the roof from the facet geometry (stored in D1), so
+        # artifact/imagery/R2 failures must NOT fail the report.
+        pdf_key = overlay_key = imagery_key = None
+        try:
+            report_data = reporter.assemble(
+                measurements, roof_polygons, facets, edges, tier, img_metadata
             )
-
-        # Use the ACTUAL bbox from the COG read (not a calculated approximation)
-        image_bbox = getattr(img_metadata, "bbox", None)
-        overlay_bytes = reporter.to_overlay(image, roof_polygons, facets, image_bbox=image_bbox)
-        pdf_bytes = reporter.to_pdf(report_data, image, overlay_bytes=overlay_bytes)
-
-        pdf_key = storage.upload_pdf(report_id, pdf_bytes)
-        overlay_key = storage.upload_overlay(report_id, overlay_bytes)
+            if image is not None and image.any():
+                img_buf = io.BytesIO()
+                Image.fromarray(image.astype(np.uint8)).save(img_buf, format="PNG")
+                img_buf.seek(0)
+                imagery_key = storage.upload_imagery(
+                    f"imagery/{geo.location_hash(lat, lon)}.png", img_buf.getvalue()
+                )
+            # Use the ACTUAL bbox from the COG read (not a calculated approximation)
+            image_bbox = getattr(img_metadata, "bbox", None)
+            overlay_bytes = reporter.to_overlay(image, roof_polygons, facets, image_bbox=image_bbox)
+            pdf_bytes = reporter.to_pdf(report_data, image, overlay_bytes=overlay_bytes)
+            pdf_key = storage.upload_pdf(report_id, pdf_bytes)
+            overlay_key = storage.upload_overlay(report_id, overlay_bytes)
+        except Exception as e:
+            logger.warning("Artifact generation/upload failed: %s — returning measurements only", e)
 
         result = assemble_result(
             measurements=measurements,

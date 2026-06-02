@@ -16,7 +16,17 @@ export async function callContainer(
       lon: job.lon,
     }),
   });
-  if (!res.ok) throw new Error(`container /process ${res.status}`);
+  if (!res.ok) {
+    // Surface the container's error detail (FastAPI `{ "detail": … }`) so a
+    // failed report records *why*, not just the status code.
+    let detail = "";
+    try {
+      detail = (await res.text()).slice(0, 300);
+    } catch {
+      /* ignore */
+    }
+    throw new Error(`container /process ${res.status}${detail ? `: ${detail}` : ""}`);
+  }
   const data: unknown = await res.json();
   if (!isContainerResult(data)) throw new Error("container returned malformed result");
   return data;
