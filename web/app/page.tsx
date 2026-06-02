@@ -1,4 +1,5 @@
 import Link from "next/link";
+import SignInCard from "@/components/SignInCard";
 
 /* ── content ──────────────────────────────────────────────────────────── */
 
@@ -37,7 +38,7 @@ const STACK = [
       ["@opennextjs/cloudflare", "Next.js → Worker adapter"],
       ["Next.js 16.2 · React 19", "App Router · server components"],
       ["NextAuth v5", "JWT sessions · credentials + OAuth"],
-      ["Stripe", "subscriptions & billing"],
+      ["bcryptjs", "password hashing"],
     ],
   },
   {
@@ -47,7 +48,7 @@ const STACK = [
       ["R2", "PDFs · overlays · imagery"],
       ["Queues (+ DLQ)", "durable job dispatch"],
       ["Durable Objects", "rate-limit + per-user quota"],
-      ["Prisma 7", "type-safe data access"],
+      ["Drizzle ORM", "type-safe, wasm-free D1 access"],
     ],
   },
   {
@@ -187,41 +188,44 @@ export default function HomePage() {
           </nav>
         </header>
 
-        {/* hero */}
-        <section className="mx-auto max-w-6xl px-6 pb-16 pt-14 md:pt-20">
-          <Rise delay={0}>
-            <div className="inline-flex items-center gap-2 rounded-full border border-[#2f9e6e]/30 bg-[#2f9e6e]/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.2em] text-[#1f8f63]">
-              <span className="anu-pulse inline-block h-1.5 w-1.5 rounded-full bg-[#2f9e6e]" />
-              live · running on cloudflare
+        {/* hero — pitch + sign-in card */}
+        <section className="mx-auto max-w-6xl px-6 pb-16 pt-10 md:pt-14">
+          <div className="grid items-start gap-12 lg:grid-cols-[1.05fr_0.95fr]">
+            <div>
+              <Rise delay={0}>
+                <div className="inline-flex items-center gap-2 rounded-full border border-[#2f9e6e]/30 bg-[#2f9e6e]/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.2em] text-[#1f8f63]">
+                  <span className="anu-pulse inline-block h-1.5 w-1.5 rounded-full bg-[#2f9e6e]" />
+                  live · running on cloudflare
+                </div>
+              </Rise>
+              <Rise delay={120}>
+                <h1 className="mt-6 font-display text-5xl font-light leading-[0.98] tracking-tight text-[#15233b] md:text-6xl">
+                  Roof intelligence,
+                  <br />
+                  <span className="text-[#b07d28]">measured from the sky.</span>
+                </h1>
+              </Rise>
+              <Rise delay={240}>
+                <p className="mt-6 max-w-xl text-lg leading-relaxed text-slate-600">
+                  Anu turns a property address into a complete roof-measurement report — area, per-facet
+                  pitch, edge lengths and waste factor — from free public aerial imagery and LiDAR.
+                  No site visit, no drone, no proprietary data.
+                </p>
+              </Rise>
+              <Rise delay={360}>
+                <a href="#how" className="mt-7 inline-block font-mono text-xs uppercase tracking-[0.2em] text-slate-500 transition hover:text-[#15233b]">See how it works ↓</a>
+              </Rise>
             </div>
-          </Rise>
-          <Rise delay={120}>
-            <h1 className="mt-6 max-w-4xl font-display text-5xl font-light leading-[0.98] tracking-tight text-[#15233b] md:text-7xl">
-              Roof intelligence,
-              <br />
-              <span className="text-[#b07d28]">measured from the sky.</span>
-            </h1>
-          </Rise>
-          <Rise delay={240}>
-            <p className="mt-7 max-w-2xl text-lg leading-relaxed text-slate-600">
-              Anu turns a property address into a complete roof-measurement report — area, per-facet
-              pitch, edge lengths and waste factor — using free public aerial imagery and LiDAR.
-              No site visit, no drone, no proprietary data.
-            </p>
-          </Rise>
-          <Rise delay={360}>
-            <div className="mt-9 flex flex-wrap items-center gap-4">
-              <Link
-                href="/register"
-                className="anu-sheen relative overflow-hidden rounded-full bg-[#e8b34a] px-7 py-3 font-medium text-[#1a1407] shadow-[0_16px_30px_-12px_rgba(232,179,74,0.8)] transition hover:bg-[#f2c463]"
-              >
-                Create free account
-              </Link>
-              <a href="#how" className="font-mono text-xs uppercase tracking-[0.2em] text-slate-500 transition hover:text-[#15233b]">See how it works ↓</a>
-            </div>
-          </Rise>
+
+            <Rise delay={220}>
+              <div className="rounded-2xl border border-slate-900/[0.07] bg-white p-7 shadow-[0_30px_60px_-30px_rgba(20,33,61,0.45)]">
+                <SignInCard />
+              </div>
+            </Rise>
+          </div>
+
           <Rise delay={520}>
-            <dl className="mt-16 grid grid-cols-2 overflow-hidden rounded-2xl border border-slate-900/[0.07] bg-white shadow-[0_20px_40px_-30px_rgba(20,33,61,0.4)] md:grid-cols-4">
+            <dl className="mt-14 grid grid-cols-2 overflow-hidden rounded-2xl border border-slate-900/[0.07] bg-white shadow-[0_20px_40px_-30px_rgba(20,33,61,0.4)] md:grid-cols-4">
               {STATS.map((s, i) => (
                 <div key={s.k} className={`px-6 py-7 ${i > 0 ? "border-l border-slate-900/[0.06]" : ""}`}>
                   <dt className="font-display text-3xl text-[#15233b]">{s.v}</dt>

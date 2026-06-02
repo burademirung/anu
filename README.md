@@ -2,13 +2,13 @@
 
 **Automated roof-measurement reports from public aerial imagery and LiDAR — built entirely on Cloudflare.**
 
-Anu is a freemium web platform for roofing contractors. A user enters a property
+Anu is a **free** web platform for roofing contractors. A user enters a property
 address; Anu generates a measurement report — total roof area, per-facet area and
 pitch, edge lengths (ridge / hip / valley / rake / eave), a material waste factor, and
 a confidence score — rendered as an on-screen overlay and a downloadable PDF. It uses
 free government data (USDA **NAIP** aerial imagery + USGS **3DEP LiDAR**) and
 **OpenStreetMap** building footprints, positioning it as a low-cost alternative to
-commercial aerial-measurement tools.
+commercial aerial-measurement tools. **Free for everyone, unlimited reports.**
 
 ---
 
@@ -25,7 +25,7 @@ commercial aerial-measurement tools.
 - [Testing](#testing)
 - [Configuration & secrets](#configuration--secrets)
 - [Deployment](#deployment)
-- [Plans & pricing](#plans--pricing)
+- [Try it](#try-it)
 - [Roadmap](#roadmap)
 
 ---
@@ -81,7 +81,7 @@ Browser ──https──▶  ┌───────────────�
                      OSM footprint · NAIP COG (rasterio) · LiDAR (PDAL) ·
                      RANSAC plane-fit · measurer · reporter (PDF + overlay)
                      uploads artifacts to R2 (S3 API) · returns JSON result
-                     holds NO DB creds — only R2 S3 keys + Mapbox token
+                     holds NO DB creds — only R2 S3 keys
                             │ PUT pdf / overlay / imagery
                             ▼
                         R2 bucket  "anu"
@@ -105,11 +105,11 @@ Browser ──https──▶  ┌───────────────�
 
 ## Report lifecycle (end-to-end)
 
-1. **Address → coordinates.** The new-report page geocodes the address via the Mapbox
-   Geocoding API (US-only) → `{ lat, lon, addressNormalized }`.
+1. **Address → coordinates.** The new-report page geocodes the address via the **US Census
+   Geocoder** (free, no API key required, US-only) → `{ lat, lon, addressNormalized }`.
 2. **`POST /api/reports`** (Web Worker): authenticates (NextAuth), checks the
-   **rate-limit Durable Object** (per-IP + per-user), and for free users consumes a slot
-   from the **per-user quota Durable Object** (monthly limit). Finds/creates the
+   **rate-limit Durable Object** (per-IP + per-user), and consumes a slot from the
+   **per-user quota Durable Object** if applicable. Finds/creates the
    `Property` (per-user dedup within ~50 m), inserts a `Report` row as `queued`, then
    `env.QUEUE.send({ reportId, propertyId, lat, lon })`. Returns immediately.
 3. **Queue consumer** (`queue()` handler in the same Worker): marks the report
@@ -138,16 +138,17 @@ Browser ──https──▶  ┌───────────────�
 ├── web/                         # Next.js app → Cloudflare Worker (OpenNext)
 │   ├── app/                     # App Router: pages + API routes
 │   │   ├── (auth)/              # login / register
-│   │   ├── dashboard/           # reports, new report, settings, billing
-│   │   └── api/                 # reports, billing (Stripe), properties/geocode, health
+│   │   ├── dashboard/           # reports, new report, settings
+│   │   └── api/                 # reports, properties/geocode, health
 │   ├── components/              # report-viewer (overlay, facet table, summary), UI
-│   ├── lib/                     # db (D1/Prisma), s3 (R2), rate-limit, enums, json-columns,
-│   │                            #   stripe, auth, container-contract, container-client,
+│   ├── db/                      # schema.ts (Drizzle ORM table definitions)
+│   ├── lib/                     # db.ts (getDb() → Drizzle D1 client), s3 (R2),
+│   │                            #   rate-limit, enums, json-columns, auth,
+│   │                            #   container-contract, container-client,
 │   │                            #   queue-consumer, report-writer
 │   ├── durable-objects/         # rate-limiter.ts (RateLimiterDO), quota.ts (QuotaDO)
 │   ├── containers/              # anu-ml.ts (AnuMLContainer — the ML container binding)
 │   ├── custom-worker.ts         # Worker entry: re-exports OpenNext fetch + queue() + DOs + Container
-│   ├── prisma/schema.prisma     # SQLite schema
 │   ├── migrations/              # D1 SQL migrations (applied via `wrangler d1 migrations`)
 │   ├── wrangler.jsonc           # bindings: D1, R2, Queues, Durable Objects, Container, assets
 │   ├── open-next.config.ts      # OpenNext Cloudflare adapter config
@@ -175,9 +176,10 @@ Browser ──https──▶  ┌───────────────�
 **Web (`web/`)**
 - Next.js **16.2** (App Router) on Cloudflare Workers via **`@opennextjs/cloudflare`**
 - React 19 · TypeScript · Tailwind CSS 4
-- **Prisma 7** with the **D1** driver adapter (`@prisma/adapter-d1`)
+- **Drizzle ORM** (`drizzle-orm/d1`) — schema at `web/db/schema.ts`, client via `getDb()`
+  in `web/lib/db.ts`. Drizzle is wasm-free and runs natively on Cloudflare Workers
+  (Prisma's WASM engine does not bundle through OpenNext).
 - **NextAuth v5** (JWT sessions; credentials + optional Google OAuth; bcrypt)
-- **Stripe** (subscriptions, checkout, billing portal, webhooks)
 - **`@cloudflare/containers`** (Container binding) · **Vitest** (unit tests)
 
 **ML service (`ml-service/`)** — Python 3.12, FastAPI + Uvicorn
@@ -186,7 +188,7 @@ Browser ──https──▶  ┌───────────────�
   `boto3` (R2 S3 API)
 
 **Platform** — Cloudflare Workers · D1 · R2 · Queues · Durable Objects · Containers.
-External services: Mapbox (geocoding + fallback imagery), Stripe (billing).
+Geocoding: **US Census Geocoder** (free, no API key, US-only).
 
 > All dependencies are pinned to their latest releases as of mid-2026.
 
@@ -194,12 +196,12 @@ External services: Mapbox (geocoding + fallback imagery), Stripe (billing).
 
 ## Data model
 
-D1 / SQLite, via Prisma (`web/prisma/schema.prisma`). Enums are stored as validated
+D1 / SQLite, via Drizzle ORM (schema at `web/db/schema.ts`). Enums are stored as validated
 strings (`web/lib/enums.ts`); GeoJSON columns are stored as TEXT and (de)serialized via
-`web/lib/json-columns.ts`.
+`web/lib/json-columns.ts`. D1 migrations are plain SQL files in `web/migrations/`, applied
+via `wrangler d1 migrations apply`.
 
-- **users** — email, name, company, `passwordHash`, `plan` (`free` | `premium`), Stripe
-  customer/subscription ids, `monthlyReportLimit` (null = unlimited).
+- **users** — email, name, company, `passwordHash`, `monthlyReportLimit` (null = unlimited).
 - **properties** — owner, raw + normalized address, lat/lon, optional parcel boundary,
   cached imagery source/date/path, `lidarAvailable`. Indexed by `userId` and `(lat, lon)`.
 - **reports** — `status` (`queued` | `processing` | `completed` | `failed`), `tier`
@@ -241,7 +243,6 @@ Prereqs: Node 20+ and npm. Python 3.12 only needed to run the ML pipeline/tests.
 # Web app
 cd web
 npm install
-npx prisma generate                                   # generate the Prisma client
 npx wrangler d1 migrations apply anu --local          # create + migrate a local D1 (Miniflare)
 cp .dev.vars.example .dev.vars                         # fill in local secret values
 npm run cf:dev                                         # wrangler dev (Worker runtime, all bindings local)
@@ -274,7 +275,7 @@ cd ml-service && python3 -m pytest tests/ -q   # geo, plane-fitter, measurer, re
 ```
 
 The web suite includes a **schema round-trip** test that applies the real D1 migration SQL
-to an in-process SQLite database and exercises the generated Prisma client, so schema and
+to an in-process SQLite database and exercises the Drizzle ORM client, so schema and
 DDL can't silently drift. The report-writer test round-trips a full container result
 (report + facets + edges with FK mapping) the same way.
 
@@ -290,22 +291,26 @@ Secrets are **not** committed. Locally they live in `web/.dev.vars` (see
 | Name | Purpose |
 |---|---|
 | `NEXTAUTH_SECRET` | JWT session signing (random 32+ chars) |
-| `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | Stripe API + webhook verification |
-| `STRIPE_PRICE_MONTHLY` / `STRIPE_PRICE_YEARLY` | subscription price IDs |
-| `MAPBOX_ACCESS_TOKEN` | geocoding (+ fallback imagery) |
+| `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | R2 API token (for signed URL generation) |
+| `R2_ENDPOINT` / `R2_BUCKET` | R2 S3 endpoint and bucket name |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | optional Google OAuth |
 
+No `DATABASE_URL` is needed — the D1 database is accessed via the `DB` Workers binding.
+Geocoding uses the US Census Geocoder and requires no API key.
+
 **Container env** (see `ml-service/.env.example`) — `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`,
-`R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `MAPBOX_ACCESS_TOKEN`. The container reaches R2 over
-the S3 API (Workers bindings don't extend into containers), so it needs an R2 API token.
+`R2_SECRET_ACCESS_KEY`, `R2_BUCKET`. The container reaches R2 over the S3 API (Workers
+bindings don't extend into containers), so it needs an R2 API token.
+
+`MAPBOX_ACCESS_TOKEN` is an optional env var for the container's fallback aerial imagery
+only; it is not required for geocoding and not a required secret.
 
 ---
 
 ## Deployment
 
-Deploys to a `*.workers.dev` subdomain (a custom domain is a later step). The full,
-copy-pasteable operator runbook is in
-[`docs/DEPLOY.md`](docs/DEPLOY.md).
+The app is live at **`https://anu-web.burademirung.workers.dev`**. The full,
+copy-pasteable operator runbook is in [`docs/DEPLOY.md`](docs/DEPLOY.md).
 In short:
 
 ```bash
@@ -315,25 +320,30 @@ npx wrangler d1 create anu          # then put the returned database_id in wrang
 npx wrangler r2 bucket create anu
 npx wrangler queues create anu-reports && npx wrangler queues create anu-reports-dlq
 npx wrangler d1 migrations apply anu --remote
+# pre-build + push the ML container image (required before first deploy):
+wrangler containers build ../ml-service -t anu-ml:v1 -p
 # set Worker secrets (wrangler secret put …) and the container's R2 env (dashboard)
 npm run cf:build
-npx wrangler deploy                 # builds + pushes the ML container image, deploys the Worker
+OPEN_NEXT_DEPLOY=1 npx wrangler deploy   # deploy the Worker (bypass OpenNext's deploy wrapper)
 ```
 
 Requires a **Workers Paid** plan (Containers, Queues, and Durable Objects need it) and a
-Docker daemon (to build the container image). Configure the Stripe webhook to
-`https://<deployed-url>/api/billing/webhook`.
+Docker daemon (colima works headless) to build the container image. See `docs/DEPLOY.md`
+for the full runbook.
 
 ---
 
-## Plans & pricing
+## Try it
 
-| | Free | Premium |
+The live site is at **`https://anu-web.burademirung.workers.dev`**. Demo accounts are
+seeded and shown on the login page and home-page hero:
+
+| Email | Password | Reports |
 |---|---|---|
-| Reports | 5 / month | Unlimited |
-| Measurements & PDF | ✓ | ✓ |
-| Report history | recent | full |
-| Price | $0 | $49 / month or $399 / year |
+| `demo@anu.dev` | `AnuDemo2026!` | 6 sample reports |
+| `solo@anu.dev` | `AnuDemo2026!` | 3 sample reports |
+
+Anu is completely free — no subscription or payment required.
 
 ---
 
@@ -341,10 +351,9 @@ Docker daemon (to build the container image). Configure the Stripe webhook to
 
 Deferred, intentionally out of the current scope:
 
-- **Cloudflare Cron Triggers** for stale-job recovery (re-queue stuck reports) and free-tier
+- **Cloudflare Cron Triggers** for stale-job recovery (re-queue stuck reports) and
   cleanup (delete >90-day reports + their R2 objects).
 - **Cross-user imagery cache** (reuse a cached NAIP tile across nearby properties).
 - **Custom domain** (currently `*.workers.dev`).
-- **Premium priority queue** (a separate high-priority Queue for paid users).
 - **Password reset email** (Resend) and broader Google OAuth.
 - **Cloudflare-native CI** (a `wrangler deploy` GitHub Action).

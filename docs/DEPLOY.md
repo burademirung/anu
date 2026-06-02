@@ -1,12 +1,14 @@
 # Anu — Deployment (Cloudflare)
 
 > Operator runbook. Every step needs an authenticated Cloudflare account (Workers Paid
-> plan) and a Docker daemon (to build the ML container image). Run these from `web/`
-> unless noted. Anu deploys to a `*.workers.dev` subdomain.
+> plan) and a Docker daemon (colima works headless — needed only to build the ML container
+> image). Run these from `web/` unless noted.
+
+**Live URL:** `https://anu-web.burademirung.workers.dev`
 
 **Goal:** Provision the Cloudflare resources, set secrets, build+push the ML container, deploy the Worker, and verify a real report end-to-end.
 
-**Prereqs:** Workers Paid plan (Containers + Queues + Durable Objects need it); Docker running (for the container image build); Stripe + Mapbox keys.
+**Prereqs:** Workers Paid plan (Containers + Queues + Durable Objects need it); Docker running (for the container image build only).
 
 ---
 
@@ -47,49 +49,65 @@ Access Key ID, Secret Access Key, and the S3 endpoint `https://<ACCOUNT_ID>.r2.c
 ## Step 4 — Set Worker secrets
 ```bash
 npx wrangler secret put NEXTAUTH_SECRET        # a random 32+ char string
-npx wrangler secret put STRIPE_SECRET_KEY
-npx wrangler secret put STRIPE_WEBHOOK_SECRET
-npx wrangler secret put STRIPE_PRICE_MONTHLY
-npx wrangler secret put STRIPE_PRICE_YEARLY
-npx wrangler secret put MAPBOX_ACCESS_TOKEN
+npx wrangler secret put R2_ACCESS_KEY_ID
+npx wrangler secret put R2_SECRET_ACCESS_KEY
+npx wrangler secret put R2_ENDPOINT            # https://<ACCOUNT_ID>.r2.cloudflarestorage.com
+npx wrangler secret put R2_BUCKET              # anu
 # optional Google OAuth:
 # npx wrangler secret put GOOGLE_CLIENT_ID
 # npx wrangler secret put GOOGLE_CLIENT_SECRET
 ```
 
-## Step 5 — Provide the container's env (R2 creds + Mapbox)
+No `DATABASE_URL` is needed — the D1 database is accessed via the `DB` Workers binding.
+Geocoding uses the US Census Geocoder (no API key required).
+Stripe secrets are **not required** (billing is unused; the Stripe code is inert).
+`MAPBOX_ACCESS_TOKEN` is optional — the container may use it for fallback aerial imagery,
+but geocoding works without it.
+
+## Step 5 — Provide the container's env (R2 creds)
 The ML container reads `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`,
-`R2_BUCKET`, `MAPBOX_ACCESS_TOKEN`. Set these as **container** env vars (NOT Worker secrets).
+`R2_BUCKET`. Set these as **container** env vars (NOT Worker secrets).
 In `web/wrangler.jsonc`, the `containers[0]` entry takes secret env via the dashboard or, for
 non-secret values, an `envvars`/`vars` map. Recommended: set the R2 secret values through the
 **dashboard → the Worker → the container's variables/secrets**, and put `R2_BUCKET=anu` +
 the `R2_ENDPOINT` (non-secret) in the container config. (Confirm the exact field names against
 the current Containers docs — beta; the agent used `@cloudflare/containers@0.3.6`.)
 
-## Step 6 — Build, push, and deploy (builds the container image)
-`wrangler deploy` builds the `../ml-service/Dockerfile` image, pushes it to Cloudflare's
-registry, and deploys the Worker + all bindings.
-```bash
-npm run cf:build            # opennextjs-cloudflare build  -> .open-next/worker.js
-npx wrangler deploy         # builds+pushes the container image, deploys the Worker
-```
-Note the deployed URL (e.g. `https://anu-web.<subdomain>.workers.dev`).
+## Step 6 — Pre-build and push the ML container image
+The ML container image must be **pre-built and pushed** before deploying. Using
+`wrangler deploy` alone to build the image from a Dockerfile breaks when OpenNext's deploy
+wrapper delegates to `wrangler` — the `containers` binding causes a crash. Instead, build
+and push the image explicitly, then reference it as a registry image in `wrangler.jsonc`.
 
-## Step 7 — Configure Stripe webhook
-In the Stripe dashboard, add a webhook endpoint → `https://<deployed-url>/api/billing/webhook`,
-subscribe to `checkout.session.completed`, `customer.subscription.updated`,
-`customer.subscription.deleted`. Put its signing secret into `STRIPE_WEBHOOK_SECRET`
-(re-run `wrangler secret put STRIPE_WEBHOOK_SECRET` if it changed) and redeploy.
+```bash
+# Build and push the container image (requires Docker / colima running)
+wrangler containers build ../ml-service -t anu-ml:v1 -p
+```
+
+## Step 7 — Build and deploy the Worker
+`OPEN_NEXT_DEPLOY=1` bypasses OpenNext's deploy wrapper (which crashes on the `containers`
+binding). NextAuth's `trustHost: true` is already set in the auth config, which is required
+for `*.workers.dev` domains.
+
+```bash
+npm run cf:build                             # opennextjs-cloudflare build -> .open-next/worker.js
+OPEN_NEXT_DEPLOY=1 npx wrangler deploy      # deploy the Worker + all bindings
+```
+
+The live URL is `https://anu-web.burademirung.workers.dev`.
 
 ## Step 8 — Smoke test the live deployment
 ```bash
-curl -s https://<deployed-url>/api/health      # {"status":"ok","service":"anu-web"}
+curl -s https://anu-web.burademirung.workers.dev/api/health      # {"status":"ok","service":"anu-web"}
 ```
 Then in a browser: register → log in → create a report for a US address. Watch it move
 `queued → processing → completed` (the StatusPoller refreshes the page). Confirm the overlay
 image renders and the PDF downloads. This exercises the full path: Worker → Queue →
 consumer → **Container `/process`** → R2 + D1 → report viewer. (First container call has a
 cold-start; subsequent calls reuse the warm instance until `sleepAfter`.)
+
+You can also use the seeded demo accounts (`demo@anu.dev` / `solo@anu.dev`, password
+`AnuDemo2026!`) to verify the report viewer with pre-existing data.
 
 ## Step 9 — Observe / troubleshoot
 ```bash
@@ -110,12 +128,11 @@ and can keep serving until you cut DNS/traffic over. To roll back, just don't po
 the workers.dev URL. `wrangler rollback` reverts the Worker to the previous deployment.
 
 ## What's intentionally deferred (post-launch iterations, see spec "out of scope")
-- Stale-job recovery + 90-day free-tier cleanup → Cloudflare **Cron Triggers** (the old
-  Docker cron scripts were deleted; rewrite as `scheduled()` handlers).
+- Stale-job recovery + 90-day cleanup → Cloudflare **Cron Triggers** (the old Docker cron
+  scripts were deleted; rewrite as `scheduled()` handlers).
 - Cross-user imagery cache.
 - Custom domain (currently `*.workers.dev`).
 - Password reset email (Resend) / Google OAuth (env-gated, secrets optional).
-- Premium high-priority queue (currently a single `anu-reports` queue).
 
 ## Done = success criteria
 - `GET /api/health` 200 on the live URL.

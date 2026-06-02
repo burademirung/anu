@@ -24,13 +24,16 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       async authorize(credentials, request) {
         if (!credentials?.email || !credentials?.password) return null;
 
-        // Rate limit: 5 login attempts per IP per 15 minutes
+        // Brute-force protection: cap login attempts per CLIENT IP. Generous so
+        // legitimate users (incl. demo accounts being clicked through) are never
+        // blocked. Use Cloudflare's real client-IP header, not x-forwarded-for.
         try {
-          const ip = (request as Request | undefined)?.headers?.get?.("x-forwarded-for") || "unknown";
-          const limit = await rateLimit(`login:${ip}`, 5, 900);
+          const h = (request as Request | undefined)?.headers;
+          const ip = h?.get?.("cf-connecting-ip") || h?.get?.("x-forwarded-for") || "unknown";
+          const limit = await rateLimit(`login:${ip}`, 50, 900);
           if (!limit.allowed) return null;
         } catch {
-          // Redis unavailable — fail open for login (auth still checks password)
+          // Rate limiter unavailable — fail open (auth still verifies the password).
         }
 
         const db = getDb();
