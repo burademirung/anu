@@ -1,5 +1,0 @@
-anu.com {
-    reverse_proxy web:3000 {
-        flush_interval -1
-    }
-}

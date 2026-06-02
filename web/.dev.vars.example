@@ -1,0 +1,22 @@
+# Local Worker secrets for `wrangler dev` / `next dev` (OpenNext).
+# Copy to `web/.dev.vars` and fill in. In production these are set with
+# `wrangler secret put <NAME>` instead (see the deploy runbook).
+#
+# Non-secret bindings (D1, R2, Queues, Durable Objects, Container) are declared
+# in `wrangler.jsonc`, NOT here.
+
+# Auth — JWT session signing (use a random 32+ char string)
+NEXTAUTH_SECRET=dev-secret-change-me
+
+# Stripe (test mode)
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_PRICE_MONTHLY=price_...
+STRIPE_PRICE_YEARLY=price_...
+
+# Mapbox — geocoding (+ fallback imagery)
+MAPBOX_ACCESS_TOKEN=pk.ey...
+
+# Optional: Google OAuth (omit to disable the Google provider)
+# GOOGLE_CLIENT_ID=
+# GOOGLE_CLIENT_SECRET=
