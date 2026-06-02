@@ -8,7 +8,7 @@ import FacetTable from "@/components/report-viewer/FacetTable";
 import ConfidenceBadge from "@/components/report-viewer/ConfidenceBadge";
 import StatusPoller from "@/components/report-viewer/StatusPoller";
 import ReportActions from "@/components/report-viewer/ReportActions";
-import RoofMap from "@/components/report-viewer/RoofMap";
+import RoofEditor from "@/components/report-viewer/RoofEditor";
 
 export default async function ReportViewerPage({
   params,
@@ -69,7 +69,8 @@ export default async function ReportViewerPage({
         <>
           {report.facets.length > 0 ? (
             <div className="mb-6">
-              <RoofMap
+              <RoofEditor
+                reportId={report.id}
                 lat={Number(report.property.lat)}
                 lon={Number(report.property.lon)}
                 facets={report.facets.map((f) => ({
@@ -80,6 +81,7 @@ export default async function ReportViewerPage({
               />
               <p className="mt-2 text-xs text-gray-400">
                 Satellite imagery © Esri · roof facets highlighted from the measured outline.
+                Wrong house or shape? Use <span className="font-medium">Edit roof</span> to trace it precisely.
               </p>
             </div>
           ) : (

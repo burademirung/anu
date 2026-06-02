@@ -16,6 +16,7 @@
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",
     "@cloudflare/containers": "^0.3.6",
+    "@geoman-io/leaflet-geoman-free": "^2.19.3",
     "@opennextjs/cloudflare": "^1.19.11",
     "bcryptjs": "^3.0.3",
     "drizzle-orm": "^0.45.2",
