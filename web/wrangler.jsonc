@@ -9,7 +9,7 @@
     {
       "binding": "DB",
       "database_name": "anu",
-      "database_id": "local-placeholder-0000-0000-000000000000",
+      "database_id": "3af70edc-49af-4430-9c66-f3a508bcf7f1",
       "migrations_dir": "migrations"
     }
   ],
@@ -28,7 +28,7 @@
       "class_name": "AnuMLContainer",
       // Build context: the ml-service Dockerfile sits one level up from web/.
       "image": "../ml-service/Dockerfile",
-      "instance_type": "standard",
+      "instance_type": "standard-1",
       "max_instances": 5
     }
   ],
