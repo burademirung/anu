@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { getDb } from "@/lib/db";
+import { users } from "@/db/schema";
+import { eq } from "drizzle-orm";
 import { rateLimit } from "@/lib/rate-limit";
 
 export async function POST(req: Request) {
@@ -28,7 +30,7 @@ export async function POST(req: Request) {
   }
 
   const db = getDb();
-  const existing = await db.user.findUnique({ where: { email } });
+  const existing = await db.query.users.findFirst({ where: eq(users.email, email) });
   if (existing) {
     return NextResponse.json(
       { error: "Email already registered" },
@@ -38,14 +40,12 @@ export async function POST(req: Request) {
 
   const passwordHash = await bcrypt.hash(password, 12);
 
-  await db.user.create({
-    data: {
-      name,
-      email,
-      passwordHash,
-      plan: "free",
-      monthlyReportLimit: 5,
-    },
+  await db.insert(users).values({
+    name,
+    email,
+    passwordHash,
+    plan: "free",
+    monthlyReportLimit: 5,
   });
 
   return NextResponse.json({ success: true }, { status: 201 });

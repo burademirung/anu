@@ -3,6 +3,8 @@ import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 import bcrypt from "bcryptjs";
 import { getDb } from "@/lib/db";
+import { users } from "@/db/schema";
+import { eq } from "drizzle-orm";
 import { rateLimit } from "@/lib/rate-limit";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
@@ -29,8 +31,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         }
 
         const db = getDb();
-        const user = await db.user.findUnique({
-          where: { email: credentials.email as string },
+        const user = await db.query.users.findFirst({
+          where: eq(users.email, credentials.email as string),
         });
 
         if (!user || !user.passwordHash) return null;

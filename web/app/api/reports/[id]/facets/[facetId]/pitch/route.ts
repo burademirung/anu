@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import { reports, reportFacets, reportEdges } from "@/db/schema";
+import { eq, and } from "drizzle-orm";
 
 export async function PATCH(
   req: Request,
@@ -20,13 +22,13 @@ export async function PATCH(
 
   // Verify ownership
   const db = getDb();
-  const report = await db.report.findFirst({
-    where: { id, userId: session.user.id },
+  const report = await db.query.reports.findFirst({
+    where: and(eq(reports.id, id), eq(reports.userId, session.user.id)),
   });
   if (!report) return NextResponse.json({ error: "Report not found" }, { status: 404 });
 
-  const facet = await db.reportFacet.findFirst({
-    where: { id: facetId, reportId: id },
+  const facet = await db.query.reportFacets.findFirst({
+    where: and(eq(reportFacets.id, facetId), eq(reportFacets.reportId, id)),
   });
   if (!facet) return NextResponse.json({ error: "Facet not found" }, { status: 404 });
 
@@ -36,18 +38,18 @@ export async function PATCH(
   const areaSqft = Number(facet.footprintAreaSqft) / Math.cos((pitchDegrees * Math.PI) / 180);
 
   // Update facet
-  await db.reportFacet.update({
-    where: { id: facetId },
-    data: {
+  await db
+    .update(reportFacets)
+    .set({
       pitch,
       pitchDegrees,
       pitchConfidence: "user_provided",
       areaSqft,
-    },
-  });
+    })
+    .where(eq(reportFacets.id, facetId));
 
   // Recalculate report totals
-  const allFacets = await db.reportFacet.findMany({ where: { reportId: id } });
+  const allFacets = await db.query.reportFacets.findMany({ where: eq(reportFacets.reportId, id) });
   const totalArea = allFacets.reduce((sum, f) => sum + Number(f.areaSqft), 0);
 
   // Recalculate waste factor if all facets have pitch
@@ -55,7 +57,7 @@ export async function PATCH(
   let wasteFactor = null;
 
   if (allHavePitch) {
-    const edges = await db.reportEdge.findMany({ where: { reportId: id } });
+    const edges = await db.query.reportEdges.findMany({ where: eq(reportEdges.reportId, id) });
     const numHips = edges.filter(e => e.edgeType === "hip").length;
     const numValleys = edges.filter(e => e.edgeType === "valley").length;
     const maxPitch = Math.max(...allFacets.map(f => Number(f.pitchDegrees || 0)));
@@ -68,14 +70,14 @@ export async function PATCH(
     wasteFactor = Math.min(wasteFactor, 25);
   }
 
-  await db.report.update({
-    where: { id },
-    data: {
+  await db
+    .update(reports)
+    .set({
       roofAreaSqft: totalArea,
       roofAreaSquares: totalArea / 100,
       wasteFactor,
-    },
-  });
+    })
+    .where(eq(reports.id, id));
 
   return NextResponse.json({ success: true, pitch, areaSqft: Math.round(areaSqft) });
 }

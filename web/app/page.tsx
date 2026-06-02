@@ -5,7 +5,7 @@ import Link from "next/link";
 const STATS = [
   { v: "90–95%", k: "pitch & facet accuracy" },
   { v: "60–90s", k: "per report" },
-  { v: "$0", k: "to start · 5 / month" },
+  { v: "Free", k: "for everyone · no limits" },
   { v: "100%", k: "on Cloudflare" },
 ];
 
@@ -69,19 +69,6 @@ const STACK = [
       ["USGS 3DEP", "nationwide LiDAR"],
       ["ReportLab", "PDF generation"],
     ],
-  },
-];
-
-const PRICING = [
-  {
-    name: "Free", price: "$0", cadence: "forever",
-    features: ["5 reports / month", "Full measurements & PDF", "Recent report history", "No card required"],
-    accent: false,
-  },
-  {
-    name: "Premium", price: "$49", cadence: "/ month · or $399 / yr",
-    features: ["Unlimited reports", "Priority processing", "Full report history", "Everything in Free"],
-    accent: true,
   },
 ];
 
@@ -259,9 +246,9 @@ export default function HomePage() {
                 in about a minute, from public government data.
               </p>
               <p className="text-[#15233b]">
-                <span className="font-medium text-[#b07d28]">Free</span> covers 5 reports a month, everything
-                a small shop needs to try it. <span className="font-medium text-[#b07d28]">Premium</span> is
-                $49/mo for unlimited reports and priority processing.
+                And it&apos;s <span className="font-medium text-[#b07d28]">completely free</span> — unlimited
+                reports, no card, no per-report fees. It runs on free public data and Cloudflare&apos;s edge,
+                so it costs almost nothing to operate.
               </p>
             </div>
           </div>
@@ -347,44 +334,6 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* 05 — pricing */}
-        <section className="mx-auto max-w-6xl px-6 py-20">
-          <Eyebrow n="05" label="Pricing" color="#b07d28" />
-          <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:max-w-3xl">
-            {PRICING.map((p) => (
-              <div
-                key={p.name}
-                className={`rounded-2xl p-8 transition duration-300 hover:-translate-y-1 ${
-                  p.accent
-                    ? "border border-[#e8b34a]/40 bg-gradient-to-br from-white to-[#fcf6e8] shadow-[0_24px_50px_-28px_rgba(232,179,74,0.7)]"
-                    : "border border-slate-900/[0.07] bg-white shadow-[0_1px_2px_rgba(20,33,61,0.04)]"
-                }`}
-              >
-                <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-slate-500">{p.name}</div>
-                <div className="mt-3 flex items-baseline gap-2">
-                  <span className="font-display text-5xl text-[#15233b]">{p.price}</span>
-                  <span className="font-mono text-[11px] text-slate-500">{p.cadence}</span>
-                </div>
-                <ul className="mt-6 space-y-3 text-sm text-slate-600">
-                  {p.features.map((f) => (
-                    <li key={f} className="flex items-center gap-2.5">
-                      <span className="text-[#b07d28]">✦</span> {f}
-                    </li>
-                  ))}
-                </ul>
-                <Link
-                  href="/register"
-                  className={`mt-8 block rounded-full px-5 py-3 text-center text-sm font-medium transition ${
-                    p.accent ? "bg-[#e8b34a] text-[#1a1407] hover:bg-[#f2c463]" : "border border-slate-300 text-[#15233b] hover:border-slate-400"
-                  }`}
-                >
-                  {p.accent ? "Go Premium" : "Start free"}
-                </Link>
-              </div>
-            ))}
-          </div>
-        </section>
-
         {/* CTA */}
         <section className="mx-auto max-w-6xl px-6 pb-28 pt-6">
           <div className="relative overflow-hidden rounded-3xl border border-[#15233b]/10 bg-[#15233b] px-8 py-16 text-center">
@@ -400,7 +349,7 @@ export default function HomePage() {
               >
                 Create free account
               </Link>
-              <div className="mt-4 font-mono text-[11px] uppercase tracking-[0.2em] text-slate-400">5 free reports / month · no card required</div>
+              <div className="mt-4 font-mono text-[11px] uppercase tracking-[0.2em] text-slate-400">Completely free · no card required</div>
             </div>
           </div>
         </section>

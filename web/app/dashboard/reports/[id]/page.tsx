@@ -1,5 +1,7 @@
 import { auth } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import { reports, reportFacets } from "@/db/schema";
+import { eq, and, asc } from "drizzle-orm";
 import { redirect, notFound } from "next/navigation";
 import MeasurementSummary from "@/components/report-viewer/MeasurementSummary";
 import FacetTable from "@/components/report-viewer/FacetTable";
@@ -17,11 +19,11 @@ export default async function ReportViewerPage({
   const { id } = await params;
 
   const db = getDb();
-  const report = await db.report.findFirst({
-    where: { id, userId: session.user.id },
-    include: {
+  const report = await db.query.reports.findFirst({
+    where: and(eq(reports.id, id), eq(reports.userId, session.user.id)),
+    with: {
       property: true,
-      facets: { orderBy: [{ structureIndex: "asc" }, { facetIndex: "asc" }] },
+      facets: { orderBy: [asc(reportFacets.structureIndex), asc(reportFacets.facetIndex)] },
       edges: true,
     },
   });

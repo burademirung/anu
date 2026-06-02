@@ -2,13 +2,15 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { stripe } from "@/lib/stripe";
 import { getDb } from "@/lib/db";
+import { users } from "@/db/schema";
+import { eq } from "drizzle-orm";
 
 export async function POST() {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const db = getDb();
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
+  const user = await db.query.users.findFirst({ where: eq(users.id, session.user.id) });
   if (!user?.stripeCustomerId) {
     return NextResponse.json({ error: "No billing account" }, { status: 400 });
   }

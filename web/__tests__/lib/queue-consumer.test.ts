@@ -4,11 +4,29 @@ import { handleQueueBatch } from "@/lib/queue-consumer";
 
 function fakeEnv(containerResult: unknown, ok = true) {
   const updates: any[] = [];
+
+  // Chainable Drizzle-shaped fake. `update(table).set(data).where(cond)` resolves
+  // to a thenable so it can be awaited and `.catch()`-ed; we record each `set` payload.
   const db = {
-    report: { update: vi.fn(async ({ data }: any) => { updates.push(data); return {}; }) },
-    reportFacet: { create: vi.fn(async () => ({ id: "f" })) },
-    reportEdge: { create: vi.fn(async () => ({ id: "e" })) },
+    update: vi.fn(() => ({
+      set: vi.fn((data: any) => {
+        updates.push(data);
+        return {
+          where: vi.fn(() => {
+            const p: any = Promise.resolve({});
+            return p;
+          }),
+        };
+      }),
+    })),
+    insert: vi.fn(() => ({
+      values: vi.fn(() => ({
+        returning: vi.fn(async () => [{ id: "row" }]),
+        then: (res: any) => Promise.resolve([]).then(res),
+      })),
+    })),
   };
+
   const env = {
     DB: {},
     CONTAINER: { fetch: vi.fn(async () => new Response(JSON.stringify(containerResult), { status: ok ? 200 : 500 })) },

@@ -1,5 +1,7 @@
 import { auth } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import { users } from "@/db/schema";
+import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import PlanBadge from "@/components/PlanBadge";
 
@@ -8,7 +10,7 @@ export default async function SettingsPage() {
   if (!session?.user?.id) redirect("/login");
 
   const db = getDb();
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
+  const user = await db.query.users.findFirst({ where: eq(users.id, session.user.id) });
   if (!user) redirect("/login");
 
   return (

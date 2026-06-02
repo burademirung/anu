@@ -1,4 +1,6 @@
-import type { PrismaClient } from "@prisma/client";
+import type { Db } from "@/lib/db";
+import { reports, reportFacets, reportEdges } from "@/db/schema";
+import { eq } from "drizzle-orm";
 import type { ContainerResult } from "@/lib/container-contract";
 import { toJsonColumn } from "@/lib/json-columns";
 
@@ -7,10 +9,10 @@ import { toJsonColumn } from "@/lib/json-columns";
  * rows, then create edge rows mapping the contract's facet INDICES to the new
  * facet row IDs. Marks the report completed.
  */
-export async function writeReportResult(db: PrismaClient, reportId: string, result: ContainerResult): Promise<void> {
-  await db.report.update({
-    where: { id: reportId },
-    data: {
+export async function writeReportResult(db: Db, reportId: string, result: ContainerResult): Promise<void> {
+  await db
+    .update(reports)
+    .set({
       status: "completed",
       tier: result.tier,
       modelVersion: result.modelVersion,
@@ -23,14 +25,15 @@ export async function writeReportResult(db: PrismaClient, reportId: string, resu
       pdfUrl: result.pdfKey,
       overlayUrl: result.overlayKey,
       processingCompletedAt: new Date(),
-    },
-  });
+    })
+    .where(eq(reports.id, reportId));
 
   // Map facetIndex -> created row id so edges can resolve their FK references.
   const indexToId = new Map<number, string>();
   for (const f of result.facets) {
-    const row = await db.reportFacet.create({
-      data: {
+    const [row] = await db
+      .insert(reportFacets)
+      .values({
         reportId,
         structureIndex: f.structureIndex,
         facetIndex: f.facetIndex,
@@ -41,21 +44,19 @@ export async function writeReportResult(db: PrismaClient, reportId: string, resu
         pitchConfidence: f.pitchConfidence,
         orientation: f.orientation,
         polygon: toJsonColumn(f.polygon) ?? "null",
-      },
-    });
+      })
+      .returning();
     indexToId.set(f.facetIndex, row.id);
   }
 
   for (const e of result.edges) {
-    await db.reportEdge.create({
-      data: {
-        reportId,
-        edgeType: e.edgeType,
-        lengthFt: e.lengthFt,
-        geometry: toJsonColumn(e.geometry) ?? "null",
-        leftFacetId: e.leftFacetIndex === null ? null : indexToId.get(e.leftFacetIndex) ?? null,
-        rightFacetId: e.rightFacetIndex === null ? null : indexToId.get(e.rightFacetIndex) ?? null,
-      },
+    await db.insert(reportEdges).values({
+      reportId,
+      edgeType: e.edgeType,
+      lengthFt: e.lengthFt,
+      geometry: toJsonColumn(e.geometry) ?? "null",
+      leftFacetId: e.leftFacetIndex === null ? null : indexToId.get(e.leftFacetIndex) ?? null,
+      rightFacetId: e.rightFacetIndex === null ? null : indexToId.get(e.rightFacetIndex) ?? null,
     });
   }
 }

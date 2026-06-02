@@ -1,5 +1,7 @@
 import { auth } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import { reports } from "@/db/schema";
+import { eq, and } from "drizzle-orm";
 import { getObjectBytes } from "@/lib/s3";
 
 export async function GET(
@@ -11,9 +13,9 @@ export async function GET(
 
   const { id } = await params;
   const db = getDb();
-  const report = await db.report.findFirst({
-    where: { id, userId: session.user.id },
-    select: { pdfUrl: true },
+  const report = await db.query.reports.findFirst({
+    where: and(eq(reports.id, id), eq(reports.userId, session.user.id)),
+    columns: { pdfUrl: true },
   });
 
   if (!report?.pdfUrl) return new Response("Not found", { status: 404 });

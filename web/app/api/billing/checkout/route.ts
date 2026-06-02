@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { stripe } from "@/lib/stripe";
 import { getDb } from "@/lib/db";
+import { users } from "@/db/schema";
+import { eq } from "drizzle-orm";
 
 export async function POST(req: Request) {
   const session = await auth();
@@ -11,7 +13,7 @@ export async function POST(req: Request) {
   const targetPriceId = priceId || process.env.STRIPE_PRICE_MONTHLY;
 
   const db = getDb();
-  const user = await db.user.findUnique({ where: { id: session.user.id } });
+  const user = await db.query.users.findFirst({ where: eq(users.id, session.user.id) });
   if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
   // Create or retrieve Stripe customer
@@ -23,10 +25,7 @@ export async function POST(req: Request) {
       metadata: { userId: user.id },
     });
     customerId = customer.id;
-    await db.user.update({
-      where: { id: user.id },
-      data: { stripeCustomerId: customerId },
-    });
+    await db.update(users).set({ stripeCustomerId: customerId }).where(eq(users.id, user.id));
   }
 
   const checkoutSession = await stripe.checkout.sessions.create({
