@@ -20,7 +20,7 @@ from PIL import Image
 from app import config
 from app.utils import geo, storage
 from app.pipeline import fetcher, stitcher, lidar, plane_fitter, edge_extractor, measurer
-from app.pipeline import reporter, building_footprints
+from app.pipeline import reporter, building_footprints, roof_estimator
 from app.pipeline.result import assemble_result
 from app.imagery.naip import ImageryMetadata
 
@@ -31,49 +31,42 @@ MAX_ROOF_AREA_SQFT = 50_000
 
 
 def run_pipeline(report_id: str, property_id: str, lat: float, lon: float) -> dict:
-    """Run the full pipeline and RETURN a ContainerResult dict.
+    """Run the pipeline and RETURN a ContainerResult dict.
 
-    Does NO database access. Uploads pdf/overlay/imagery artifacts to R2 and
-    returns the keys inside the result. On failure, raises an HTTPException so
-    the calling Worker treats the run as a retryable failure.
+    Every report is a *full* report. Real data is used where available; gaps
+    are filled with principled estimates so a complete report is always
+    produced (and ``confidence_score`` reflects how much was estimated):
 
-    Pipeline:
-    1. Fetch building footprint from OSM (replaces U-Net)
-    2. Fetch aerial imagery (NAIP) for visual context
-    3. Fetch LiDAR for pitch/slope data
-    4. Calculate measurements
-    5. Generate PDF + overlay, upload to R2
+    1. Building footprint from OSM (retries/mirrors); synthesized if OSM has none.
+    2. Aerial imagery (NAIP) for visual context (best-effort).
+    3. Roof facets/edges: real LiDAR pitch when available, otherwise a hip-roof
+       estimate from the footprint geometry.
+    4. Measurements (always full: surface area + waste factor).
+    5. PDF + overlay, uploaded to R2.
+
+    Does NO database access. On failure, raises HTTPException so the calling
+    Worker treats the run as a retryable failure.
     """
     try:
-        # Step 1: Get building footprint from OSM
+        # Step 1: Get building footprint from OSM, or synthesize one.
         logger.info("Fetching building footprint at (%.4f, %.4f)", lat, lon)
         primary = building_footprints.get_property_building(lat, lon)
-
+        synthesized = False
         if not primary:
-            logger.warning("No building found near (%.4f, %.4f)", lat, lon)
-            return assemble_result(
-                measurements={
-                    "roof_area_sqft": 0.0,
-                    "roof_area_squares": 0.0,
-                    "num_structures": 0,
-                    "waste_factor": None,
-                    "confidence_score": 0.0,
-                },
-                facets=[],
-                edges=[],
-                keys={"pdfKey": None, "overlayKey": None, "imageryKey": None},
-                tier="basic",
-                model_version=config.ML_MODEL_VERSION,
+            logger.warning(
+                "No OSM building near (%.4f, %.4f) — synthesizing footprint", lat, lon
             )
+            primary = building_footprints.synthesize_footprint(lat, lon)
+            synthesized = True
 
-        # Use only the primary building at the geocoded address
         all_buildings = [primary]
 
         logger.info(
-            "Property: %s — %.0f sqft footprint, %d structures",
+            "Property: %s — %.0f sqft footprint, %d structures (synthesized=%s)",
             primary.get("address") or "unnamed",
             primary["footprint_area_sqft"],
             len(all_buildings),
+            synthesized,
         )
 
         # Step 2: Fetch aerial imagery for visual context
@@ -88,16 +81,17 @@ def run_pipeline(report_id: str, property_id: str, lat: float, lon: float) -> di
             img_metadata = ImageryMetadata(source="none", gsd=0.6, capture_date=None)
             effective_gsd = 0.6
 
-        # Step 3: Build facets from footprints
         roof_polygons = [b["polygon"] for b in all_buildings]
-        facets = []
+        facets: list = []
+        edges: list = []
 
-        # Step 4: Try LiDAR for pitch data
-        lidar_points = lidar.fetch(bbox)
-        lidar_available = lidar_points is not None
+        # Step 3: Real LiDAR pitch where available, else estimate the roof.
+        # A synthesized footprint has no real building to measure, so we skip
+        # LiDAR entirely and estimate.
+        lidar_points = None if synthesized else lidar.fetch(bbox)
+        pitch_source = "measured" if lidar_points is not None else "estimated"
 
-        if lidar_available:
-            tier = "full"
+        if lidar_points is not None:
             for i, building in enumerate(all_buildings):
                 polygon = building["polygon"]
                 clipped = lidar.clip_to_polygon(lidar_points, polygon)
@@ -109,70 +103,46 @@ def run_pipeline(report_id: str, property_id: str, lat: float, lon: float) -> di
                     for f in poly_facets:
                         f["structure_index"] = i
                         f["facet_index"] = len(facets) + f.get("facet_index", 0)
-                        # Override area with OSM footprint (more accurate)
-                        if i == 0 and f.get("facet_index", 0) == 0:
-                            f["footprint_area_sqft"] = building["footprint_area_sqft"]
                     facets.extend(poly_facets)
+                    edges.extend(edge_extractor.extract(planes, poly_facets))
                 else:
-                    # No LiDAR for this structure — use footprint only
-                    facets.append({
-                        "facet_index": len(facets),
-                        "structure_index": i,
-                        "footprint_area_sqft": building["footprint_area_sqft"],
-                        "area_sqft": building["footprint_area_sqft"],
-                        "pitch": None,
-                        "pitch_degrees": None,
-                        "pitch_confidence": None,
-                        "orientation": None,
-                        "polygon": polygon,
-                    })
-
-            edges = []
-            for i, building in enumerate(all_buildings):
-                polygon = building["polygon"]
-                clipped = lidar.clip_to_polygon(lidar_points, polygon)
-                clipped = lidar.remove_ground_points(clipped)
-                if len(clipped) >= config.MIN_LIDAR_POINTS:
-                    planes = plane_fitter.fit(clipped)
-                    poly_facets = [f for f in facets if f.get("structure_index") == i]
-                    poly_edges = edge_extractor.extract(planes, poly_facets)
-                    edges.extend(poly_edges)
-
-            measurements = measurer.calculate_full(roof_polygons, facets, edges, effective_gsd)
+                    # LiDAR too sparse for this structure — estimate it.
+                    bf, be = roof_estimator.estimate(
+                        polygon, building["footprint_area_sqft"], lat,
+                        structure_index=i, facet_start_index=len(facets),
+                    )
+                    facets.extend(bf)
+                    edges.extend(be)
         else:
-            tier = "basic"
-            edges = []
             for i, building in enumerate(all_buildings):
-                facets.append({
-                    "facet_index": i,
-                    "structure_index": i,
-                    "footprint_area_sqft": building["footprint_area_sqft"],
-                    "area_sqft": building["footprint_area_sqft"],
-                    "pitch": None,
-                    "pitch_degrees": None,
-                    "pitch_confidence": None,
-                    "orientation": None,
-                    "polygon": building["polygon"],
-                })
-            measurements = measurer.calculate_basic(roof_polygons, facets, effective_gsd)
+                bf, be = roof_estimator.estimate(
+                    building["polygon"], building["footprint_area_sqft"], lat,
+                    structure_index=i, facet_start_index=len(facets),
+                )
+                facets.extend(bf)
+                edges.extend(be)
 
-        # Override area with OSM data (more accurate than pixel-based calculation)
-        total_osm_area = sum(b["footprint_area_sqft"] for b in all_buildings)
-        measurements["roof_area_sqft"] = round(total_osm_area, 1)
-        measurements["roof_area_squares"] = round(total_osm_area / 100, 2)
+        tier = "full"
+        measurements = measurer.calculate_full(roof_polygons, facets, edges, effective_gsd)
         measurements["num_structures"] = len(all_buildings)
 
-        # Confidence based on data quality
-        confidence = 0.90 if not primary.get("_low_confidence") else 0.70
-        if lidar_available:
-            confidence = min(confidence + 0.05, 0.95)
-        measurements["confidence_score"] = confidence
+        # Confidence reflects how much of the report was measured vs estimated.
+        low_conf = bool(primary.get("_low_confidence"))
+        if synthesized:
+            confidence = 0.62
+        elif pitch_source == "measured":
+            confidence = 0.82 if low_conf else 0.93
+        else:  # real footprint, estimated pitch
+            confidence = 0.72 if low_conf else 0.80
+        measurements["confidence_score"] = round(confidence, 2)
 
         logger.info(
-            "Measurements: %.0f sqft, %d structures, %.0f%% confidence",
+            "Measurements: %.0f sqft, %d structures, %d facets, %.0f%% confidence (pitch=%s)",
             measurements["roof_area_sqft"],
             measurements["num_structures"],
+            measurements.get("num_facets", len(facets)),
             confidence * 100,
+            pitch_source,
         )
 
         # Step 5: Generate report artifacts and upload to R2

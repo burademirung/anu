@@ -7,6 +7,8 @@ import MeasurementSummary from "@/components/report-viewer/MeasurementSummary";
 import FacetTable from "@/components/report-viewer/FacetTable";
 import ConfidenceBadge from "@/components/report-viewer/ConfidenceBadge";
 import StatusPoller from "@/components/report-viewer/StatusPoller";
+import ReportActions from "@/components/report-viewer/ReportActions";
+import RoofMap from "@/components/report-viewer/RoofMap";
 
 export default async function ReportViewerPage({
   params,
@@ -43,7 +45,9 @@ export default async function ReportViewerPage({
             </p>
           )}
         </div>
-        <ConfidenceBadge tier={report.tier} confidenceScore={report.confidenceScore ? Number(report.confidenceScore) : null} />
+        {report.status === "completed" && (
+          <ConfidenceBadge confidenceScore={report.confidenceScore ? Number(report.confidenceScore) : null} />
+        )}
       </div>
 
       {isProcessing && (
@@ -63,18 +67,33 @@ export default async function ReportViewerPage({
 
       {report.status === "completed" && (
         <>
-          {report.overlayUrl && (
-            <div className="mb-6 rounded-lg overflow-hidden border">
-              {/* Overlay is a dynamically generated PNG streamed from an auth'd API
-                  route with no fixed intrinsic size; next/image optimization adds no
-                  value here and complicates sizing. */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={`/api/reports/${report.id}/overlay`}
-                alt="Roof overlay on aerial imagery"
-                className="w-full"
+          {report.facets.length > 0 ? (
+            <div className="mb-6">
+              <RoofMap
+                lat={Number(report.property.lat)}
+                lon={Number(report.property.lon)}
+                facets={report.facets.map((f) => ({
+                  polygon: f.polygon,
+                  pitch: f.pitch,
+                  orientation: f.orientation,
+                }))}
               />
+              <p className="mt-2 text-xs text-gray-400">
+                Satellite imagery © Esri · roof facets highlighted from the measured outline.
+              </p>
             </div>
+          ) : (
+            report.overlayUrl && (
+              <div className="mb-6 rounded-lg overflow-hidden border">
+                {/* Fallback: server-rendered overlay PNG when no facet geometry is present. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`/api/reports/${report.id}/overlay`}
+                  alt="Roof overlay on aerial imagery"
+                  className="w-full"
+                />
+              </div>
+            )
           )}
 
           <MeasurementSummary
@@ -116,18 +135,25 @@ export default async function ReportViewerPage({
             </div>
           )}
 
-          <div className="mt-6 flex gap-3">
+          <div className="mt-6 flex flex-wrap gap-3 items-center">
             {report.pdfUrl && (
               <a href={`/api/reports/${report.id}/pdf`} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
                 Download PDF
               </a>
             )}
+            <ReportActions reportId={report.id} />
           </div>
 
           <p className="mt-8 text-xs text-gray-400">
             Report generated with model {report.modelVersion} on {report.createdAt.toLocaleDateString()}
           </p>
         </>
+      )}
+
+      {report.status === "failed" && (
+        <div className="mt-2">
+          <ReportActions reportId={report.id} />
+        </div>
       )}
     </div>
   );

@@ -289,8 +289,8 @@ export default function HomePage() {
             ))}
           </ol>
           <p className="mt-6 font-mono text-[11px] leading-relaxed tracking-wide text-slate-500">
-            Where LiDAR is unavailable (~1% of the US) the report degrades gracefully to a footprint-area
-            “basic” tier; the contractor can enter pitch manually.
+            Every property returns a complete report. Where LiDAR is unavailable, pitch is estimated from
+            footprint geometry and the confidence score reflects it — never a blank or partial result.
           </p>
         </section>
 

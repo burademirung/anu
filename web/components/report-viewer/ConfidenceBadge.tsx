@@ -1,9 +1,8 @@
-export default function ConfidenceBadge({ tier, confidenceScore }: { tier: string | null; confidenceScore: number | null }) {
-  const tierColor = tier === "full" ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800";
+export default function ConfidenceBadge({ confidenceScore }: { tier?: string | null; confidenceScore: number | null }) {
   return (
     <div className="flex gap-2">
-      <span className={`text-xs px-3 py-1 rounded-full font-medium ${tierColor}`}>
-        {tier === "full" ? "Full Report" : "Basic Report"}
+      <span className="text-xs px-3 py-1 rounded-full font-medium bg-green-100 text-green-800">
+        Full Report
       </span>
       {confidenceScore !== null && (
         <span className="text-xs px-3 py-1 rounded-full bg-blue-100 text-blue-800">

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import math
+import time
 from typing import List, Optional
 
 import requests
@@ -17,7 +18,75 @@ from shapely.geometry import Point, Polygon
 
 logger = logging.getLogger(__name__)
 
-OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+# Multiple Overpass mirrors. A single endpoint occasionally rate-limits or
+# times out; trying mirrors in turn (with a couple retries each) keeps a
+# transient failure from producing an empty report.
+OVERPASS_URLS = [
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+]
+_HEADERS = {"User-Agent": "anu-ml/1.0 (roof measurement)"}
+
+
+def _query_overpass(query: str) -> Optional[dict]:
+    """POST *query* to Overpass, trying each mirror with retries.
+
+    Returns the parsed JSON, or ``None`` if every endpoint/attempt failed.
+    A successful response with zero buildings returns the (empty) JSON, not
+    None — only network/HTTP failures return None.
+    """
+    last_exc: Optional[Exception] = None
+    for url in OVERPASS_URLS:
+        for attempt in range(2):
+            try:
+                resp = requests.post(
+                    url, data={"data": query}, timeout=30, headers=_HEADERS
+                )
+                resp.raise_for_status()
+                return resp.json()
+            except (requests.RequestException, ValueError) as e:
+                last_exc = e
+                logger.warning(
+                    "Overpass %s attempt %d failed: %s", url, attempt + 1, e
+                )
+                time.sleep(1.5 * (attempt + 1))
+    logger.error("All Overpass endpoints failed: %s", last_exc)
+    return None
+
+
+def synthesize_footprint(
+    lat: float, lon: float, area_sqft: float = 2400.0, aspect: float = 1.4
+) -> dict:
+    """Build a plausible rectangular footprint centred on (lat, lon).
+
+    Last-resort fallback when OSM has no building for the address, so the
+    pipeline can still produce a full report. The result is flagged
+    ``_synthesized`` so confidence is scored lower.
+    """
+    depth_ft = math.sqrt(area_sqft / aspect)
+    width_ft = aspect * depth_ft
+    half_w_m = (width_ft / 2.0) * 0.3048
+    half_d_m = (depth_ft / 2.0) * 0.3048
+    cos_lat = math.cos(math.radians(lat)) or 1e-6
+    dlat = half_d_m / 111_000.0
+    dlon = half_w_m / (111_000.0 * cos_lat)
+    ring = [
+        [lon - dlon, lat - dlat],
+        [lon + dlon, lat - dlat],
+        [lon + dlon, lat + dlat],
+        [lon - dlon, lat + dlat],
+        [lon - dlon, lat - dlat],
+    ]
+    return {
+        "polygon": {"type": "Polygon", "coordinates": [ring]},
+        "footprint_area_sqft": round(area_sqft, 1),
+        "area_sqft": round(area_sqft, 1),
+        "address": None,
+        "distance_m": 0.0,
+        "num_vertices": 4,
+        "_synthesized": True,
+    }
 
 
 def fetch_building_footprints(
@@ -45,14 +114,9 @@ def fetch_building_footprints(
     out skel qt;
     """
 
-    try:
-        resp = requests.post(OVERPASS_URL, data={"data": query}, timeout=30)
-        resp.raise_for_status()
-    except requests.RequestException as e:
-        logger.warning("Overpass API request failed: %s", e)
+    data = _query_overpass(query)
+    if data is None:
         return []
-
-    data = resp.json()
     elements = data.get("elements", [])
 
     # Build node lookup

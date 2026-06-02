@@ -10,8 +10,10 @@ const securityHeaders = [
   },
   {
     key: "Content-Security-Policy",
+    // img-src allows Esri World Imagery basemap tiles (satellite map on the
+    // report viewer). Tiles load as <img>, so only img-src needs widening.
     value:
-      "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'",
+      "default-src 'self'; img-src 'self' data: blob: https://server.arcgisonline.com https://*.arcgisonline.com; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'",
   },
 ];
 
